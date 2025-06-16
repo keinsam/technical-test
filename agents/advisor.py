@@ -1,28 +1,25 @@
-import json
-
-def format_report(company, analyst_output_json):
-    data = json.loads(analyst_output_json)
+def format_report(company, analyst_output):
     report = f"# Market Pulse: {company}\n\n"
-    report += f"**Google Trends Score (3mo):** {data.get('google_trends', 'N/A')}\n\n"
+    report += f"**Google Trends Score (3mo):** {analyst_output.google_trends}\n\n"
     report += "## Executive Summary\n"
-    report += f"{data.get('summary', 'No summary')}\n\n"
+    report += f"{analyst_output.summary}\n\n"
     report += "## Recent Key Deals\n"
-    if data.get("deals"):
-        for d in data["deals"]:
-            report += f"- **{d.get('deal name', 'N/A')}**\n"
-            report += f"    - Date: {d.get('date', 'N/A')}\n"
-            report += f"    - Partner(s): {d.get('partners', 'N/A')}\n"
-            report += f"    - Value: {d.get('deal value', 'N/A')}\n"
-            report += f"    - Stage: {d.get('development stage', 'N/A')}\n"
-            report += f"    - MOA: {d.get('MOA', 'N/A')}\n"
-            report += f"    - Opportunity Score: {d.get('opportunity score', 'N/A')}\n"
-            report += f"    - Summary: {d.get('summary', 'N/A')}\n"
+    if analyst_output.deals:
+        for d in analyst_output.deals:
+            report += f"### {d.deal_name}\n"
+            report += f"- Date: {d.date}\n"
+            report += f"- Partner(s): {d.partners}\n"
+            report += f"- Value: {d.deal_value}\n"
+            report += f"- Stage: {d.development_stage}\n"
+            report += f"- MOA: {d.moa}\n"
+            report += f"- Competitors: {d.competitors}\n"
+            report += f"- Opportunity Score: {d.opportunity_score}/5\n"
+            report += f"- Summary: {d.summary}\n\n"
     else:
         report += "No recent deals found.\n"
     report += "\n## Competitors\n"
-    if data.get("competitors"):
-        for comp in data["competitors"]:
-            report += f"- {comp}\n"
+    if analyst_output.competitors:
+        report += ", ".join(analyst_output.competitors)
     else:
         report += "No competitors listed.\n"
     return report
