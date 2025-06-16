@@ -1,5 +1,7 @@
+import io
 import streamlit as st
 from datetime import datetime
+from gtts import gTTS
 from agents.crawler import fetch_news
 from agents.analyst import extract_events
 from agents.advisor import get_advisor_output
@@ -52,6 +54,23 @@ def advisor_report_to_markdown(advisor_output, company, events, report_date):
         f"{advisor_output.conclusion}\n"
     )
     return md
+
+def generate_audio_summary(advisor_output, company, report_date, lang="en"):
+    summary_text = (
+        f"Advisor Report for {company}, dated {report_date}. "
+        f"Google Trends Score: {advisor_output.google_trends} out of 100. "
+        f"Key insights: {advisor_output.key_insights}. "
+        f"Main takeaways: {', '.join(advisor_output.key_takeaways)}. "
+        f"Risks: {advisor_output.risks_and_opportunities['risks']}. "
+        f"Opportunities: {advisor_output.risks_and_opportunities['opportunities']}. "
+        f"Recommendations: {', '.join(advisor_output.recommendations)}. "
+        f"Conclusion: {advisor_output.conclusion}"
+    )
+    tts = gTTS(text=summary_text, lang=lang)
+    mp3_fp = io.BytesIO()
+    tts.write_to_fp(mp3_fp)
+    mp3_fp.seek(0)
+    return mp3_fp
 
 st.set_page_config(page_title="Market Pulse", page_icon="🩺", layout="wide")
 st.title("Market Pulse 🚀")
@@ -148,6 +167,11 @@ if st.button("Run Market Pulse"):
             file_name=f"{company}_advisor_report_{report_date.replace(' ','_').replace(':','-')}.md",
             mime="text/markdown"
         )
+
+        # ---- AUDIO SUMMARY ----
+        audio_fp = generate_audio_summary(advisor_output, company, report_date, lang="en")
+        with st.expander("🔊 Audio Summary"):
+            st.audio(audio_fp, format="audio/mp3")
 
     if debug:
         with st.expander("DEBUG INFO", expanded=False):
