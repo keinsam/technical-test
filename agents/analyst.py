@@ -1,13 +1,14 @@
-from langchain.output_parsers import PydanticOutputParser
-from langchain.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
-from typing import Optional, List
-import json
-import re
-from agents.prompts import ANALYST_PROMPT
-from langchain_openai import ChatOpenAI
 import os
+from langchain.prompts import ChatPromptTemplate
+from langchain_core.documents import Document
+from langchain_core.runnables import RunnableLambda, RunnableSequence
+from langchain.output_parsers import PydanticOutputParser
+from langchain_openai import ChatOpenAI
+from typing import Optional, List
+from pydantic import BaseModel, Field
+from agents.prompts import ANALYST_PROMPT
 
+# MODELS
 class Event(BaseModel):
     type: str = Field(description="Type of event: 'deal', 'pipeline', or 'other'")
     title: str = Field(description="Title or name of the event")
@@ -25,59 +26,52 @@ class Event(BaseModel):
 class AnalystOutput(BaseModel):
     events: List[Event]
 
-def preprocess_llm_json(llm_response):
-    llm_response = re.sub(r'//.*', '', llm_response)
-    llm_response = re.sub(r'/\*.*?\*/', '', llm_response, flags=re.DOTALL)
-    llm_response = re.sub(r',(\s*[}\]])', r'\1', llm_response)
-    try:
-        data = json.loads(llm_response)
-        if "events" in data and isinstance(data["events"], list):
-            for ev in data["events"]:
-                if isinstance(ev.get("competitors"), list):
-                    ev["competitors"] = ", ".join(ev["competitors"])
-        return json.dumps(data)
-    except Exception:
-        return llm_response
+def docs_to_context(docs: List[Document]) -> str:
+    context = ""
+    for doc in docs:
+        meta = doc.metadata
+        context += f"Title: {meta.get('title')}\nDate: {meta.get('date','')}\nContent: {doc.page_content}\nSource: {meta.get('url')}\n\n"
+    return context
 
-def extract_events(company, articles, debug=False):
+# Full chain
+def extract_events(company, docs, debug=False):
     debug_info = {}
+
+    # Compose chain: docs → context → prompt → LLM → parse
     llm = ChatOpenAI(
         model="gpt-4o-mini",
-        temperature=0.2,
-        max_tokens=2048,
-        openai_api_key=os.getenv("OPENAI_API_KEY"),  # Assurez-vous que la clé API est définie
+        temperature=0.1,
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        max_tokens=2048
     )
-
-    context = ""
-    for art in articles:
-        context += f"Title: {art['title']}\nDate: {art.get('date','')}\nContent: {art['content']}\nSource: {art['url']}\n\n"
     prompt = ChatPromptTemplate.from_template(ANALYST_PROMPT)
     parser = PydanticOutputParser(pydantic_object=AnalystOutput)
-    full_prompt = prompt.format(company=company, context=context)
-    # format_instructions = parser.get_format_instructions()
-    # full_prompt_final = full_prompt + "\n" + format_instructions
-    full_prompt_final = prompt.format(company=company, context=context)
 
-    if debug:
-        debug_info["LLM Prompt"] = full_prompt_final
+    # 1. docs → context string
+    docs_to_context_step = RunnableLambda(lambda x: docs_to_context(x["docs"]))
 
-    llm_response = llm.invoke(full_prompt_final)
-    if hasattr(llm_response, "content"):
-        llm_response = llm_response.content
+    # 2. context → prompt string
+    prompt_step = RunnableLambda(lambda x: prompt.format(company=x["company"], context=x["context"]))
 
-    if debug:
-        debug_info["LLM Raw Response"] = llm_response
+    # 3. prompt → LLM output
+    # 4. LLM output → Pydantic parsing
 
-    llm_response_fixed = preprocess_llm_json(llm_response)
-    if debug and llm_response != llm_response_fixed:
-        debug_info["LLM Preprocessed JSON"] = llm_response_fixed
+    chain = (
+        RunnableLambda(lambda x: {"company": x["company"], "docs": x["docs"]})
+        | RunnableLambda(lambda x: {"company": x["company"], "context": docs_to_context(x["docs"])})
+        | RunnableLambda(lambda x: prompt.format(company=x["company"], context=x["context"]))
+        | llm
+        | RunnableLambda(lambda x: x.content if hasattr(x, "content") else x)
+        | parser
+    )
 
+    # Execution
+    result = None
     try:
-        data = parser.parse(llm_response_fixed)
+        result = chain.invoke({"company": company, "docs": docs})
         if debug:
-            debug_info["Parsed Output"] = str(data)
-        return data, debug_info
+            debug_info["Analyst Chain Result"] = str(result)
+        return result, debug_info
     except Exception as e:
-        debug_info["Parse Error"] = str(e)
-        data = AnalystOutput(events=[])
-        return data, debug_info
+        debug_info["Analyst Parse Error"] = str(e)
+        return AnalystOutput(events=[]), debug_info
