@@ -1,12 +1,20 @@
 import os
+from dotenv import load_dotenv
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.documents import Document
 from langchain_core.runnables import RunnableLambda, RunnableSequence
 from langchain.output_parsers import PydanticOutputParser
 from langchain_openai import ChatOpenAI
+from langchain_huggingface import HuggingFaceEndpoint
+from langchain_community.llms import Ollama
 from typing import Optional, List
 from pydantic import BaseModel, Field
 from agents.prompts import ANALYST_PROMPT
+
+# Load environment variables
+load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")  
 
 # MODELS
 class Event(BaseModel):
@@ -39,10 +47,17 @@ def extract_events(company, docs, debug=False):
     debug_info = {}
 
     # Compose chain: docs → context → prompt → LLM → parse
+    # llm = Ollama(model="mistral")
+    # llm = HuggingFaceEndpoint(
+    #         repo_id="HuggingFaceH4/zephyr-7b-beta",
+    #         temperature=0.1,
+    #         max_new_tokens=1024,
+    #         huggingfacehub_api_token=HF_TOKEN,
+    # )
     llm = ChatOpenAI(
         model="gpt-4o-mini",
         temperature=0.1,
-        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        openai_api_key=OPENAI_API_KEY,
         max_tokens=2048
     )
     prompt = ChatPromptTemplate.from_template(ANALYST_PROMPT)
