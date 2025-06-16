@@ -6,6 +6,7 @@ from agents.crawler import fetch_news
 from agents.analyst import extract_events
 from agents.advisor import get_advisor_output
 
+
 EMOJI_MAP = {
     "deal": "🤝",
     "pipeline": "🧬",
@@ -84,8 +85,13 @@ if st.button("Run Market Pulse"):
     debug_logs = {}
     report_date = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    st.markdown(f"<h2 style='color:#222;'>{company} <span style='font-size:0.6em;color:#666;'>({report_date})</span></h2>", unsafe_allow_html=True)
-
+    # st.markdown(f"<h2 style='color:#222;'>{company} <span style='font-size:0.6em;color:#666;'>({report_date})</span></h2>", unsafe_allow_html=True)
+    st.markdown(
+        f"<h2 style='color:#1751a3;font-weight:700'>{company} "
+        f"<span style='font-size:0.6em;color:#666;'>{report_date}</span></h2>",
+        unsafe_allow_html=True
+    )
+    
     with st.spinner("📰 Fetching news..."):
         docs = fetch_news(company, max_articles=3, debug=True, debug_logs=debug_logs)
 
@@ -97,9 +103,10 @@ if st.button("Run Market Pulse"):
         advisor_output, advisor_debug = get_advisor_output(company, analyst_output.events, debug=debug)
         debug_logs.update(advisor_debug)
 
-    st.header("✨ Extracted Events")
     events = analyst_output.events
 
+    # === Présentation principale ===
+    st.header("✨ Extracted Events")
     EVENT_CARD_COLOR = "#e0c3fc"
 
     if events:
@@ -130,12 +137,13 @@ if st.button("Run Market Pulse"):
                     </div>
                     """, unsafe_allow_html=True
                 )
+
     else:
         st.info("No events found.")
 
-    ADVISOR_BG = "#ffe5b4"
-
+    # === Rapport business/présentation ===
     if advisor_output:
+        ADVISOR_BG = "#ffe5b4"
         st.header("💼 Advisor Report")
         st.markdown(
             f"""
@@ -160,6 +168,10 @@ if st.button("Run Market Pulse"):
             </div>
             """, unsafe_allow_html=True
         )
+
+        # === SECTION "EXPORT & AUDIO" ===
+        st.markdown("---")
+        st.subheader("📤 Markdown & Audio summary")
         md_report = advisor_report_to_markdown(advisor_output, company, events, report_date)
         st.download_button(
             label="⬇️ Download Advisor Report (Markdown)",
@@ -167,12 +179,11 @@ if st.button("Run Market Pulse"):
             file_name=f"{company}_advisor_report_{report_date.replace(' ','_').replace(':','-')}.md",
             mime="text/markdown"
         )
-
-        # ---- AUDIO SUMMARY ----
-        audio_fp = generate_audio_summary(advisor_output, company, report_date, lang="en")
-        with st.expander("🔊 Audio Summary"):
+        with st.expander("🔊 Listen to Audio Summary", expanded=False):
+            audio_fp = generate_audio_summary(advisor_output, company, report_date, lang="en")
             st.audio(audio_fp, format="audio/mp3")
 
+    # --- DEBUG INFO ---
     if debug:
         with st.expander("DEBUG INFO", expanded=False):
             for k, v in debug_logs.items():
