@@ -1,12 +1,15 @@
-ANALYST_PROMPT = """
-You are a professional biotech business analyst. Your task is to analyze news articles about {company} and extract a detailed list of significant events related to business deals, pipeline updates, or other relevant news.
 
-Return your output as a single valid JSON object with the following format:
+ANALYST_PROMPT = """
+Analyze the following news articles about {company}. 
+Extract a list of unique, significant events directly supported by the articles, such as business deals, pipeline updates, or other relevant news.
+
+Return EXACTLY and ONLY a single valid JSON object with this structure:
+
 {{
   "events": [
     {{
-      "type": "deal" | "pipeline" | "other", // REQUIRED
-      "title": string, // REQUIRED
+      "type": "deal" | "pipeline" | "other",      // REQUIRED, choose only one
+      "title": string,                            // REQUIRED, concise headline
       "date": string or null,
       "partners": string or null,
       "deal_value": string or null,
@@ -16,41 +19,45 @@ Return your output as a single valid JSON object with the following format:
       "status": string or null,
       "mechanism_of_action": string or null,
       "competitors": string or null,
-      "summary": string // REQUIRED; write a long summary of the event
+      "summary": string                          // REQUIRED, summary of the event based ONLY on the articles
     }}
     // ... more events
   ]
 }}
 
-Articles:
-{context}
+STRICT RULES:
+- For each event, fill as many fields as possible directly from the articles. If a value is missing, use null (not "null", not empty string).
+- Only include events and details actually present in the articles provided.
+- DO NOT include comments, explanations, markdown, code fences, or any text before or after the JSON object.
+- DO NOT include trailing commas.
+- DO NOT invent or infer any events or details beyond what is clearly supported by the articles.
+- Output MUST be a valid JSON object with key "events" (list of objects).
 
-IMPORTANT: Your response MUST be a single valid JSON object and NOTHING ELSE. Do not explain, do not add comments, and do not include trailing commas.
-IMPORTANT: Respond ONLY with a valid JSON object, no explanations, no comments, no markdown, no schema, no instructions.
-IMPORTANT: Do NOT invent any events or details; use only the provided articles to derive insights and recommendations.
+BEGIN ARTICLES:
+{context}
+END ARTICLES.
+
+Provide ONLY the JSON object and nothing else.
 """
 
 ADVISOR_PROMPT = """
-You are a professional biotech business advisor. Given a list of structured events (business deals, pipeline updates, or other relevant news) for {company}, produce a single valid JSON object with ALL of the following fields:
+You are a professional biotech business advisor. Based on the following list of structured events for {company}, produce a single valid JSON object containing ALL of these fields:
 
-- "google_trends": integer (e.g., 72)
-- "key_insights": string (short business summary of the recent news, 3–5 sentences)
+- "google_trends": integer (estimate if needed)
+- "key_insights": string (3–5 business-oriented sentences)
 - "key_takeaways": list of 3 to 5 bullet points (each 1–2 sentences)
-- "risks_and_opportunities": {{ "risks": string, "opportunities": string }} (two short paragraphs)
-- "recommendations": list of 2–3 concrete recommendations (bulleted)
-- "conclusion": string (overall assessment of the company's momentum)
+- "risks_and_opportunities": {{ "risks": string, "opportunities": string }} (short paragraphs)
+- "recommendations": list of 2–3 practical recommendations (bulleted)
+- "conclusion": string (overall assessment)
 
-If a field cannot be filled from the provided events, you may invent realistic content.
+STRICT RULES:
+- Base your content ONLY on the provided events. If a field cannot be filled from them, state so or make a reasonable estimate.
+- Return ONLY the JSON object, with NO markdown, comments, or explanation before or after.
+- DO NOT include trailing commas.
 
-**Instructions:**
-- Return ONLY the JSON object, nothing else.
-- Do NOT include comments, explanations, or trailing commas.
-- Make each section detailed and business-oriented.
-
-Parsed JSON of events:
+BEGIN EVENTS:
 {events_json}
+END EVENTS.
 
-IMPORTANT: Your response MUST be a single valid JSON object and NOTHING ELSE. Do not explain, do not add comments, and do not include trailing commas.
-IMPORTANT: Respond ONLY with a valid JSON object, no explanations, no comments, no markdown, no schema, no instructions.
-IMPORTANT: Do NOT invent any events or details; use only the provided structured events to derive insights and recommendations.
+Output ONLY the JSON object and nothing else.
 """
