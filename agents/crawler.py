@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
-from eval.examples import COMPANY_NEWS
+from examples import COMPANY_NEWS
 
 def fetch_news(company):
     articles = []
