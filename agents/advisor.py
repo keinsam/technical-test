@@ -17,6 +17,20 @@ def format_report(company, analyst_output):
             report += f"- Summary: {d.summary}\n\n"
     else:
         report += "No recent deals found.\n"
+
+    report += "\n## Pipeline Updates\n"
+    if hasattr(analyst_output, "pipeline_updates") and analyst_output.pipeline_updates:
+        for p in analyst_output.pipeline_updates:
+            report += f"### {p.product_name}\n"
+            report += f"- Indication: {p.indication}\n"
+            report += f"- Stage: {p.development_stage}\n"
+            report += f"- Status: {p.status}\n"
+            report += f"- Date: {p.date}\n"
+            report += f"- Competitors: {p.competitors}\n"
+            report += f"- Summary: {p.summary}\n\n"
+    else:
+        report += "No pipeline updates found.\n"
+
     report += "\n## Competitors\n"
     if analyst_output.competitors:
         report += ", ".join(analyst_output.competitors)

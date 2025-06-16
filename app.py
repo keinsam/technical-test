@@ -22,6 +22,12 @@ if st.button("Run Market Pulse"):
     if analyst_output.deals:
         st.subheader("Deal Opportunity Scores")
         st.bar_chart([d.opportunity_score for d in analyst_output.deals])
+    if hasattr(analyst_output, "pipeline_updates") and analyst_output.pipeline_updates:
+        st.subheader("Pipeline Updates (Count by Stage)")
+        # Exemple simple pour compter les updates par stage
+        stages = [p.development_stage for p in analyst_output.pipeline_updates]
+        import pandas as pd
+        st.bar_chart(pd.Series(stages).value_counts())
     # Affichage Debug
     if debug:
         with st.expander("DEBUG INFO", expanded=True):
