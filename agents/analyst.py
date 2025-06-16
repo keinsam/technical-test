@@ -1,4 +1,4 @@
-from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage
 import os
@@ -30,5 +30,5 @@ Content:
 {context}
     """
     msg = [HumanMessage(content=prompt)]
-    response = llm(msg)
+    response = llm.invoke(msg)
     return response.content
