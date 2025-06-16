@@ -1,10 +1,15 @@
 def format_report(company, analyst_output):
     report = f"# Market Pulse: {company}\n\n"
     report += f"**Google Trends Score (3mo):** {analyst_output.google_trends}\n\n"
-    report += "## Executive Summary\n"
-    report += f"{analyst_output.summary}\n\n"
-    report += "## Events\n"
-
+    report += "## Key Insights\n"
+    report += f"{analyst_output.key_insights}\n\n"
+    report += "## Key Takeaways\n"
+    if analyst_output.key_takeaways:
+        for item in analyst_output.key_takeaways:
+            report += f"- {item}\n"
+    else:
+        report += "No key takeaways available.\n"
+    report += "\n## Events\n"
     if analyst_output.events:
         for ev in analyst_output.events:
             report += f"### {ev.title}\n"
@@ -23,10 +28,15 @@ def format_report(company, analyst_output):
             report += f"- Summary: {ev.summary}\n\n"
     else:
         report += "No significant events found.\n"
-
-    report += "\n## Competitors\n"
-    if analyst_output.competitors:
-        report += ", ".join(analyst_output.competitors)
+    report += "\n## Risks and Opportunities\n"
+    report += f"**Risks:** {analyst_output.risks_and_opportunities.risks}\n\n"
+    report += f"**Opportunities:** {analyst_output.risks_and_opportunities.opportunities}\n\n"
+    report += "## Recommendations\n"
+    if analyst_output.recommendations:
+        for rec in analyst_output.recommendations:
+            report += f"- {rec}\n"
     else:
-        report += "No competitors listed.\n"
+        report += "No recommendations available.\n"
+    report += "\n## Conclusion\n"
+    report += f"{analyst_output.conclusion}\n"
     return report

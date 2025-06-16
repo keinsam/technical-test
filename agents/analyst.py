@@ -5,8 +5,8 @@ from langchain.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from typing import Optional, List
 import os
-
 import json
+from agents.prompts import ANALYST_PROMPT
 
 # MODELES Pydantic
 class Event(BaseModel):
@@ -24,11 +24,19 @@ class Event(BaseModel):
     opportunity_score: Optional[int] = Field(default=None, description="Score from 1 to 5 or 0")
     summary: str = Field(description="Short summary or description")
 
+class RisksAndOpportunities(BaseModel):
+    risks: str
+    opportunities: str
+
 class AnalystOutput(BaseModel):
     events: List[Event]
-    competitors: List[str]
     google_trends: int
-    summary: str
+    key_insights: str
+    key_takeaways: List[str]
+    risks_and_opportunities: RisksAndOpportunities
+    recommendations: List[str]
+    conclusion: str
+
 
 
 # FONCTION de pré-traitement JSON : stringifie les 'competitors' des deals si liste
@@ -62,63 +70,7 @@ def extract_events(company, articles, debug=False):
     for art in articles:
         context += f"Title: {art['title']}\nDate: {art.get('date','')}\nContent: {art['content']}\nSource: {art['url']}\n\n"
 
-    prompt = ChatPromptTemplate.from_template("""
-You are a professional biotech business analyst.
-Given the following news/articles about {company}, extract up to 6 significant, unique events, each of type "deal", "pipeline", or "other".
-For each event, classify it as:
-- type: "deal" (business deals: acquisition, partnership, out-licensing, joint-venture, investment, etc)
-- type: "pipeline" (product developments, clinical trial progress, regulatory milestones, etc)
-- type: "other" (other significant news not fitting the above)
-
-For each event, output:
-- type: "deal", "pipeline", or "other"
-- title: string (title or name of the event)
-- date: string (or 'none')
-- partners: string (if any, or 'none')
-- deal_value: string (if any, or 'none')
-- product_name: string (if any, or 'none')
-- indication: string (if any, or 'none')
-- development_stage: string (if any, or 'none')
-- status: string (if any, or 'none')
-- mechanism_of_action: string (if any, or 'none')
-- competitors: string (main competitors as a comma-separated string, or 'none')
-- opportunity_score: integer (1-5, or 0 if nothing found)
-- summary: string (short summary, or 'none')
-
-If you do not find a field, write 'none'.
-If there are no relevant events, output an empty list.
-
-Then, suggest main competitors as a list (outside events), a Google Trends score (fake if needed, e.g. 60/100), and a short, realistic summary.
-
-Articles:
-{context}
-
-Output your answer in the following JSON format:
-{{
-  "events": [
-    {{
-      "type": "...",
-      "title": "...",
-      "date": "...",
-      "partners": "...",
-      "deal_value": "...",
-      "product_name": "...",
-      "indication": "...",
-      "development_stage": "...",
-      "status": "...",
-      "mechanism_of_action": "...",
-      "competitors": "...",
-      "opportunity_score": 0,
-      "summary": "..."
-    }}
-  ],
-  "competitors": ["...", "..."],
-  "google_trends": 0,
-  "summary": "..."
-}}
-
-Absolutely no comments or text. Output only pure, valid JSON.
-""")
+    prompt = ChatPromptTemplate.from_template(ANALYST_PROMPT)
 
     parser = PydanticOutputParser(pydantic_object=AnalystOutput)
     full_prompt = prompt.format(company=company, context=context)
@@ -148,5 +100,13 @@ Absolutely no comments or text. Output only pure, valid JSON.
     except Exception as e:
         debug_info["Parse Error"] = str(e)
         # Sortie vide si erreur
-        data = AnalystOutput(events=[], competitors=[], google_trends=50, summary="No data found.")
+        data = AnalystOutput(
+            events=[],
+            google_trends=50,
+            key_insights="No data found.",
+            key_takeaways=[],
+            risks_and_opportunities=RisksAndOpportunities(risks="No data", opportunities="No data"),
+            recommendations=[],
+            conclusion="No data found."
+        )
         return data, debug_info
