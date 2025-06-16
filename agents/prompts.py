@@ -1,4 +1,3 @@
-
 ANALYST_PROMPT = """
 Analyze the following news articles about {company}. 
 Extract a list of unique, significant events directly supported by the articles, such as business deals, pipeline updates, or other relevant news.
@@ -20,6 +19,7 @@ Return EXACTLY and ONLY a single valid JSON object with this structure:
       "mechanism_of_action": string or null,
       "competitors": string or null,
       "summary": string                          // REQUIRED, summary of the event based ONLY on the articles
+      "source_url": string or null                // REQUIRED, URL of the article
     }}
     // ... more events
   ]

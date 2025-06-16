@@ -127,6 +127,11 @@ if st.button("Run Market Pulse"):
             ul_html = f"<ul style='padding-left:1.2em;color:#111;'>{''.join(li_items)}</ul>"
             summary_html = f"<div style='margin-top:0.7em;font-size:0.97em;color:#111;'>{ev.summary}</div>"
             with cols[i % 2]:
+                source_html = (
+                    f"<div style='margin-top:0.7em;font-size:0.9em;color:#3371c2;'>"
+                    f"🔗 Source: <a href='{ev.source_url}' target='_blank' style='color:#3371c2;text-decoration:underline'>{ev.source_url}</a>"
+                    f"</div>" if getattr(ev, "source_url", None) else ""
+                )
                 st.markdown(
                     f"""
                     <div style="background:{card_color};padding:1.2rem 1rem 1rem 1rem;border-radius:18px;box-shadow:0 2px 8px #0001;margin-bottom:1.2rem;color:#111;">
@@ -134,6 +139,7 @@ if st.button("Run Market Pulse"):
                         <span style="font-size:0.9em;color:#222;">{ev.date or ''}</span>
                         {ul_html}
                         {summary_html}
+                        {source_html}
                     </div>
                     """, unsafe_allow_html=True
                 )

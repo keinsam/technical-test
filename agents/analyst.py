@@ -22,6 +22,7 @@ class Event(BaseModel):
     mechanism_of_action: Optional[str] = Field(default=None)
     competitors: Optional[str] = Field(default=None)
     summary: str = Field(description="Long summary of the event")
+    source_url: str = Field(description="URL of the article where the event was found")
 
 class AnalystOutput(BaseModel):
     events: List[Event]
