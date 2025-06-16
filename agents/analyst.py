@@ -3,44 +3,36 @@ from langchain_openai import ChatOpenAI
 from langchain.output_parsers import PydanticOutputParser
 from langchain.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
+from typing import Optional, List
 import os
 
 import json
 
 # MODELES Pydantic
-class Deal(BaseModel):
-    deal_name: str = Field(description="Deal name/title or 'none'")
-    date: str = Field(description="Date or 'none'")
-    partners: str = Field(description="Deal partners or 'none'")
-    deal_value: str = Field(description="Deal value or 'none'")
-    development_stage: str = Field(description="e.g. 'Phase II', or 'none'")
-    moa: str = Field(description="Mechanism of action or 'none'")
-    competitors: str = Field(description="Main competitors as a single string, comma-separated, or 'none'")
-    opportunity_score: int = Field(description="Score from 1 to 5, or 0")
-    summary: str = Field(description="Short summary or 'none'")
-
-class PipelineUpdate(BaseModel):
-    product_name: str = Field(description="Name of drug/therapy/device or 'none'")
-    indication: str = Field(description="Indication/condition/target or 'none'")
-    development_stage: str = Field(description="Phase (e.g. Phase II), or 'none'")
-    status: str = Field(description="Status (e.g. positive topline results, FDA approval, etc.) or 'none'")
-    date: str = Field(description="Date or 'none'")
-    competitors: str = Field(description="Main competitors, comma-separated, or 'none'")
-    summary: str = Field(description="Short summary or 'none'")
+class Event(BaseModel):
+    type: str = Field(description="Type of event: 'deal', 'pipeline', or 'other'")
+    title: str = Field(description="Title or name of the event")
+    date: Optional[str] = Field(default=None, description="Date if any")
+    partners: Optional[str] = Field(default=None, description="Partners involved (for deals), if any")
+    deal_value: Optional[str] = Field(default=None, description="Deal value (for deals), if any")
+    product_name: Optional[str] = Field(default=None, description="Product/Drug name (for pipeline), if any")
+    indication: Optional[str] = Field(default=None, description="Indication/target (for pipeline), if any")
+    development_stage: Optional[str] = Field(default=None, description="Development stage, if any")
+    status: Optional[str] = Field(default=None, description="Status update (for pipeline), if any")
+    mechanism_of_action: Optional[str] = Field(default=None, description="Mechanism Of Action, if any")
+    competitors: Optional[str] = Field(default=None, description="Main competitors, comma-separated, if any")
+    opportunity_score: Optional[int] = Field(default=None, description="Score from 1 to 5 or 0")
+    summary: str = Field(description="Short summary or description")
 
 class AnalystOutput(BaseModel):
-    deals: list[Deal]
-    pipeline_updates: list[PipelineUpdate]
-    competitors: list[str]
+    events: List[Event]
+    competitors: List[str]
     google_trends: int
     summary: str
 
+
+# FONCTION de pré-traitement JSON : stringifie les 'competitors' des deals si liste
 def preprocess_llm_json(llm_response):
-    """
-    - Supprime les commentaires style // et /* ... */
-    - Supprime les virgules superflues en fin de liste/objet
-    - Corrige la structure : stringifie 'competitors' si liste
-    """
     # Remove // comments
     llm_response = re.sub(r'//.*', '', llm_response)
     # Remove /* ... */ comments
@@ -49,22 +41,16 @@ def preprocess_llm_json(llm_response):
     llm_response = re.sub(r',(\s*[}\]])', r'\1', llm_response)
     try:
         data = json.loads(llm_response)
-        # Corrige competitors dans deals
-        if "deals" in data and isinstance(data["deals"], list):
-            for deal in data["deals"]:
-                if isinstance(deal.get("competitors"), list):
-                    deal["competitors"] = ", ".join(deal["competitors"])
-        # Corrige competitors dans pipeline_updates
-        if "pipeline_updates" in data and isinstance(data["pipeline_updates"], list):
-            for pipe in data["pipeline_updates"]:
-                if isinstance(pipe.get("competitors"), list):
-                    pipe["competitors"] = ", ".join(pipe["competitors"])
+        # Corrige competitors si jamais c'est une liste
+        if "events" in data and isinstance(data["events"], list):
+            for ev in data["events"]:
+                if isinstance(ev.get("competitors"), list):
+                    ev["competitors"] = ", ".join(ev["competitors"])
         return json.dumps(data)
     except Exception as e:
-        # Pour debug, tu peux print ici
         return llm_response
 
-def extract_deals(company, articles, debug=False):
+def extract_events(company, articles, debug=False):
     debug_info = {}
     llm = ChatOpenAI(
         model="gpt-4o-mini",
@@ -78,59 +64,51 @@ def extract_deals(company, articles, debug=False):
 
     prompt = ChatPromptTemplate.from_template("""
 You are a professional biotech business analyst.
-Given the following news/articles about {company}, extract **up to 3 unique, real business deals** (such as acquisitions, partnerships, out-licensing, joint-ventures, investments, etc) and **up to 3 pipeline updates** (product developments, clinical trial progress, regulatory milestones, etc).
+Given the following news/articles about {company}, extract up to 6 significant, unique events, each of type "deal", "pipeline", or "other".
+For each event, classify it as:
+- type: "deal" (business deals: acquisition, partnership, out-licensing, joint-venture, investment, etc)
+- type: "pipeline" (product developments, clinical trial progress, regulatory milestones, etc)
+- type: "other" (other significant news not fitting the above)
 
-For each deal, output:
-- deal_name: string (the name or title of the deal)
+For each event, output:
+- type: "deal", "pipeline", or "other"
+- title: string (title or name of the event)
 - date: string (or 'none')
-- partners: string (or 'none')
-- deal_value: string (or 'none')
-- development_stage: string (or 'none')
-- moa: string (mechanism of action, or 'none')
+- partners: string (if any, or 'none')
+- deal_value: string (if any, or 'none')
+- product_name: string (if any, or 'none')
+- indication: string (if any, or 'none')
+- development_stage: string (if any, or 'none')
+- status: string (if any, or 'none')
+- mechanism_of_action: string (if any, or 'none')
 - competitors: string (main competitors as a comma-separated string, or 'none')
 - opportunity_score: integer (1-5, or 0 if nothing found)
 - summary: string (short summary, or 'none')
 
-For each pipeline update, output:
-- product_name: string (name of the product or candidate)
-- indication: string (disease/condition/target, or 'none')
-- development_stage: string (phase or status, or 'none')
-- status: string (e.g. 'FDA approval', 'positive topline', 'enrollment started', or 'none')
-- date: string (or 'none')
-- competitors: string (main competitors as a comma-separated string, or 'none')
-- summary: string (short summary, or 'none')
-
 If you do not find a field, write 'none'.
-If there are no deals or no pipeline updates, output empty lists.
+If there are no relevant events, output an empty list.
 
-Then, suggest competitors as a list (outside the deals/updates), a Google Trends score (fake, no need to specify it is fake, e.g. 60/100), and a short, realistic summary.
+Then, suggest main competitors as a list (outside events), a Google Trends score (fake if needed, e.g. 60/100), and a short, realistic summary.
 
 Articles:
 {context}
 
 Output your answer in the following JSON format:
 {{
-  "deals": [
+  "events": [
     {{
-      "deal_name": "...",
+      "type": "...",
+      "title": "...",
       "date": "...",
       "partners": "...",
       "deal_value": "...",
-      "development_stage": "...",
-      "moa": "...",
-      "competitors": "...",
-      "opportunity_score": 0,
-      "summary": "..."
-    }}
-  ],
-  "pipeline_updates": [
-    {{
       "product_name": "...",
       "indication": "...",
       "development_stage": "...",
       "status": "...",
-      "date": "...",
+      "mechanism_of_action": "...",
       "competitors": "...",
+      "opportunity_score": 0,
       "summary": "..."
     }}
   ],
@@ -140,7 +118,7 @@ Output your answer in the following JSON format:
 }}
 
 Absolutely no comments or text. Output only pure, valid JSON.
-    """)
+""")
 
     parser = PydanticOutputParser(pydantic_object=AnalystOutput)
     full_prompt = prompt.format(company=company, context=context)
@@ -151,7 +129,7 @@ Absolutely no comments or text. Output only pure, valid JSON.
         debug_info["LLM Prompt"] = full_prompt_final
 
     # --- LLM inference ---
-        llm_response = llm.invoke(full_prompt_final).content
+    llm_response = llm.invoke(full_prompt_final).content
 
     if debug:
         debug_info["LLM Raw Response"] = llm_response
@@ -170,5 +148,5 @@ Absolutely no comments or text. Output only pure, valid JSON.
     except Exception as e:
         debug_info["Parse Error"] = str(e)
         # Sortie vide si erreur
-        data = AnalystOutput(deals=[], pipeline_updates=[], competitors=[], google_trends=50, summary="No data found.")
+        data = AnalystOutput(events=[], competitors=[], google_trends=50, summary="No data found.")
         return data, debug_info
