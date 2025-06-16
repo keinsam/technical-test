@@ -20,7 +20,6 @@ class Event(BaseModel):
     status: Optional[str] = Field(default=None)
     mechanism_of_action: Optional[str] = Field(default=None)
     competitors: Optional[str] = Field(default=None)
-    opportunity_score: Optional[int] = Field(default=None)
     summary: str = Field(description="Long summary of the event")
 
 class AnalystOutput(BaseModel):

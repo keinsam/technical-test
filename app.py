@@ -37,11 +37,6 @@ if st.button("Run Market Pulse"):
         st.subheader("Conclusion")
         st.write(advisor_output["conclusion"])
 
-    if analyst_output.events:
-        st.subheader("Event Opportunity Scores (if any)")
-        scores = [ev.opportunity_score for ev in analyst_output.events if ev.opportunity_score is not None]
-        if scores:
-            st.bar_chart(scores)
     if debug:
         with st.expander("DEBUG INFO", expanded=True):
             for k, v in debug_logs.items():
