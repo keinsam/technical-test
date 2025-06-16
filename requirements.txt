@@ -1,8 +1,7 @@
-requests
-bs4
 langchain
 langchain_community
 openai
 langchain_openai
 streamlit
 gtts
+langchain_huggingface
