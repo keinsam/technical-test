@@ -1,42 +1,60 @@
-def format_report(company, analyst_output):
-    report = f"# Market Pulse: {company}\n\n"
-    report += f"**Google Trends Score (3mo):** {analyst_output.google_trends}\n\n"
-    report += "## Key Insights\n"
-    report += f"{analyst_output.key_insights}\n\n"
-    report += "## Key Takeaways\n"
-    if analyst_output.key_takeaways:
-        for item in analyst_output.key_takeaways:
-            report += f"- {item}\n"
-    else:
-        report += "No key takeaways available.\n"
-    report += "\n## Events\n"
-    if analyst_output.events:
-        for ev in analyst_output.events:
-            report += f"### {ev.title}\n"
-            report += f"- Type: {ev.type}\n"
-            if ev.date: report += f"- Date: {ev.date}\n"
-            if ev.partners: report += f"- Partners: {ev.partners}\n"
-            if ev.deal_value: report += f"- Value: {ev.deal_value}\n"
-            if ev.product_name: report += f"- Product: {ev.product_name}\n"
-            if ev.indication: report += f"- Indication: {ev.indication}\n"
-            if ev.development_stage: report += f"- Stage: {ev.development_stage}\n"
-            if ev.status: report += f"- Status: {ev.status}\n"
-            if ev.mechanism_of_action: report += f"- MOA: {ev.mechanism_of_action}\n"
-            if ev.competitors: report += f"- Competitors: {ev.competitors}\n"
-            if ev.opportunity_score is not None:
-                report += f"- Opportunity Score: {ev.opportunity_score}/5\n"
-            report += f"- Summary: {ev.summary}\n\n"
-    else:
-        report += "No significant events found.\n"
-    report += "\n## Risks and Opportunities\n"
-    report += f"**Risks:** {analyst_output.risks_and_opportunities.risks}\n\n"
-    report += f"**Opportunities:** {analyst_output.risks_and_opportunities.opportunities}\n\n"
-    report += "## Recommendations\n"
-    if analyst_output.recommendations:
-        for rec in analyst_output.recommendations:
-            report += f"- {rec}\n"
-    else:
-        report += "No recommendations available.\n"
-    report += "\n## Conclusion\n"
-    report += f"{analyst_output.conclusion}\n"
-    return report
+from langchain.prompts import ChatPromptTemplate
+from agents.prompts import ADVISOR_PROMPT
+import json
+from dotenv import load_dotenv
+import os
+from langchain_openai import ChatOpenAI
+
+class RisksAndOpportunities:
+    risks: str
+    opportunities: str
+
+class AdvisorOutput:
+    google_trends: int
+    key_insights: str
+    key_takeaways: list
+    risks_and_opportunities: dict
+    recommendations: list
+    conclusion: str
+
+def preprocess_llm_json(llm_response):
+    import re
+    llm_response = re.sub(r'//.*', '', llm_response)
+    llm_response = re.sub(r'/\*.*?\*/', '', llm_response, flags=re.DOTALL)
+    llm_response = re.sub(r',(\s*[}\]])', r'\1', llm_response)
+    return llm_response
+
+def get_advisor_output(company, events, debug=False):
+    debug_info = {}
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0.3,
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        max_tokens=2048
+    )
+
+    events_json = json.dumps([ev.dict() for ev in events], ensure_ascii=False, indent=2)
+    prompt = ChatPromptTemplate.from_template(ADVISOR_PROMPT)
+    full_prompt = prompt.format(company=company, events_json=events_json)
+
+    if debug:
+        debug_info["Advisor LLM Prompt"] = full_prompt
+
+    llm_response = llm.invoke(full_prompt)
+    if hasattr(llm_response, "content"):
+        llm_response = llm_response.content
+    llm_response_fixed = preprocess_llm_json(llm_response)
+
+
+    if debug:
+        debug_info["Advisor LLM Raw"] = llm_response
+        debug_info["Advisor LLM Preprocessed"] = llm_response_fixed
+
+    try:
+        data = json.loads(llm_response_fixed)
+        if debug:
+            debug_info["Advisor Parsed"] = data
+        return data, debug_info
+    except Exception as e:
+        debug_info["Advisor Parse Error"] = str(e)
+        return None, debug_info
