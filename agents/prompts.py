@@ -43,7 +43,7 @@ Provide ONLY the JSON object and nothing else.
 ADVISOR_PROMPT = """
 You are a professional biotech business advisor. Based on the following list of structured events for {company}, produce a single valid JSON object containing ALL of these fields:
 
-- "google_trends": integer (estimate if needed)
+- "google_trends": integer (estimate if needed, no need to specify it is fake)
 - "key_insights": string (3–5 business-oriented sentences)
 - "key_takeaways": list of 3 to 5 bullet points (each 1–2 sentences)
 - "risks_and_opportunities": {{ "risks": string, "opportunities": string }} (short paragraphs)

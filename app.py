@@ -1,19 +1,25 @@
 import io
-import streamlit as st
 from datetime import datetime
+from typing import List, Optional
+import streamlit as st
 from gtts import gTTS
 from agents.crawler import fetch_news
 from agents.analyst import extract_events
-from agents.advisor import get_advisor_output
+from agents.advisor import generate_business_report
 
 
+# Emoji mapping for event types
 EMOJI_MAP = {
     "deal": "🤝",
     "pipeline": "🧬",
     "other": "📰"
 }
 
-def advisor_report_to_markdown(advisor_output, company, events, report_date):
+
+def advisor_report_to_markdown(advisor_output, company: str, events: List, report_date: str) -> str:
+    """
+    Generate a markdown version of the advisor report.
+    """
     takeaways = "\n".join(f"- {k}" for k in advisor_output.key_takeaways)
     recos = "\n".join(f"- {k}" for k in advisor_output.recommendations)
     event_table = (
@@ -36,7 +42,7 @@ def advisor_report_to_markdown(advisor_output, company, events, report_date):
             str(ev.competitors or "")
         ])
         event_table += "|\n"
-    md = (
+    return (
         f"# Advisor Report: {company}\n\n"
         f"**Date**: {report_date}\n\n"
         f"**Google Trends Score**: {advisor_output.google_trends} / 100\n\n"
@@ -54,9 +60,12 @@ def advisor_report_to_markdown(advisor_output, company, events, report_date):
         f"## 📝 Conclusion\n"
         f"{advisor_output.conclusion}\n"
     )
-    return md
 
-def generate_audio_summary(advisor_output, company, report_date, lang="en"):
+
+def generate_audio_summary(advisor_output, company: str, report_date: str, lang: str = "en") -> io.BytesIO:
+    """
+    Generate an audio summary of the advisor report using Google Text-to-Speech.
+    """
     summary_text = (
         f"Advisor Report for {company}, dated {report_date}. "
         f"Google Trends Score: {advisor_output.google_trends} out of 100. "
@@ -73,6 +82,9 @@ def generate_audio_summary(advisor_output, company, report_date, lang="en"):
     mp3_fp.seek(0)
     return mp3_fp
 
+
+# === STREAMLIT APP UI ===
+
 st.set_page_config(page_title="Market Pulse", page_icon="🩺", layout="wide")
 st.title("Market Pulse 🚀")
 
@@ -82,80 +94,76 @@ with st.sidebar:
     debug = st.checkbox("Debug mode", value=True)
 
 if st.button("Run Market Pulse"):
-    debug_logs = {}
     report_date = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    # st.markdown(f"<h2 style='color:#222;'>{company} <span style='font-size:0.6em;color:#666;'>({report_date})</span></h2>", unsafe_allow_html=True)
     st.markdown(
         f"<h2 style='color:#1751a3;font-weight:700'>{company} "
         f"<span style='font-size:0.6em;color:#666;'>{report_date}</span></h2>",
         unsafe_allow_html=True
     )
-    
+
+    debug_logs = {}
     with st.spinner("📰 Fetching news..."):
-        docs = fetch_news(company, max_articles=3, debug=True, debug_logs=debug_logs)
+        docs = fetch_news(company, max_articles=3, debug_logs=debug_logs)
 
     with st.spinner("🧠 Extracting events..."):
-        analyst_output, analyst_debug = extract_events(company, docs, debug=debug)
-        debug_logs.update(analyst_debug)
+        analyst_output = extract_events(company, docs, debug_logs=debug_logs)
 
-    with st.spinner("🦾 Report..."):
-        advisor_output, advisor_debug = get_advisor_output(company, analyst_output.events, debug=debug)
-        debug_logs.update(advisor_debug)
+    with st.spinner("🦾 Generating report..."):
+        advisor_output = generate_business_report(company, analyst_output.events, debug_logs=debug_logs)
 
     events = analyst_output.events
-
-    # === Présentation principale ===
     st.header("✨ Extracted Events")
-    EVENT_CARD_COLOR = "#e0c3fc"
+    cols = st.columns(2)
 
     if events:
-        cols = st.columns(2)
         for i, ev in enumerate(events):
             emoji = EMOJI_MAP.get(ev.type, "💡")
-            card_color = EVENT_CARD_COLOR
-            li_items = []
-            if ev.type: li_items.append(f"<li><b>Type:</b> {ev.type.capitalize()}</li>")
-            if ev.partners: li_items.append(f"<li><b>Partners:</b> {ev.partners}</li>")
-            if ev.deal_value: li_items.append(f"<li><b>Value:</b> {ev.deal_value}</li>")
-            if ev.product_name: li_items.append(f"<li><b>Product:</b> {ev.product_name}</li>")
-            if ev.indication: li_items.append(f"<li><b>Indication:</b> {ev.indication}</li>")
-            if ev.development_stage: li_items.append(f"<li><b>Stage:</b> {ev.development_stage}</li>")
-            if ev.status: li_items.append(f"<li><b>Status:</b> {ev.status}</li>")
-            if ev.mechanism_of_action: li_items.append(f"<li><b>MOA:</b> {ev.mechanism_of_action}</li>")
-            if ev.competitors: li_items.append(f"<li><b>Competitors:</b> {ev.competitors}</li>")
-            ul_html = f"<ul style='padding-left:1.2em;color:#111;'>{''.join(li_items)}</ul>"
+            li_items = [
+                f"<li><b>{label}:</b> {getattr(ev, attr)}</li>"
+                for label, attr in [
+                    ("Type", "type"),
+                    ("Partners", "partners"),
+                    ("Value", "deal_value"),
+                    ("Product", "product_name"),
+                    ("Indication", "indication"),
+                    ("Stage", "development_stage"),
+                    ("Status", "status"),
+                    ("MOA", "mechanism_of_action"),
+                    ("Competitors", "competitors")
+                ] if getattr(ev, attr, None)
+            ]
             summary_html = f"<div style='margin-top:0.7em;font-size:0.97em;color:#111;'>{ev.summary}</div>"
+            source_html = (
+                f"<div style='margin-top:0.7em;font-size:0.9em;color:#3371c2;'>"
+                f"🔗 Source: <a href='{ev.source_url}' target='_blank' style='color:#3371c2;text-decoration:underline'>{ev.source_url}</a></div>"
+                if getattr(ev, "source_url", None) else ""
+            )
             with cols[i % 2]:
-                source_html = (
-                    f"<div style='margin-top:0.7em;font-size:0.9em;color:#3371c2;'>"
-                    f"🔗 Source: <a href='{ev.source_url}' target='_blank' style='color:#3371c2;text-decoration:underline'>{ev.source_url}</a>"
-                    f"</div>" if getattr(ev, "source_url", None) else ""
-                )
                 st.markdown(
                     f"""
-                    <div style="background:{card_color};padding:1.2rem 1rem 1rem 1rem;border-radius:18px;box-shadow:0 2px 8px #0001;margin-bottom:1.2rem;color:#111;">
+                    <div style="background:#e0c3fc;padding:1.2rem 1rem 1rem 1rem;border-radius:18px;
+                    box-shadow:0 2px 8px #0001;margin-bottom:1.2rem;color:#111;">
                         <h3 style="margin-bottom:0.3rem;color:#111;">{emoji} {ev.title}</h3>
                         <span style="font-size:0.9em;color:#222;">{ev.date or ''}</span>
-                        {ul_html}
+                        <ul style='padding-left:1.2em;color:#111;'>{''.join(li_items)}</ul>
                         {summary_html}
                         {source_html}
                     </div>
                     """, unsafe_allow_html=True
                 )
-
     else:
         st.info("No events found.")
 
-    # === Rapport business/présentation ===
+    # === BUSINESS REPORT ===
     if advisor_output:
-        ADVISOR_BG = "#ffe5b4"
         st.header("💼 Advisor Report")
         st.markdown(
             f"""
-            <div style="background:{ADVISOR_BG};padding:1.5rem 1.3rem 1.2rem 1.3rem;border-radius:18px;box-shadow:0 3px 12px #aaa2;margin-bottom:1.2rem;color:#111;">
+            <div style="background:#ffe5b4;padding:1.5rem 1.3rem 1.2rem 1.3rem;border-radius:18px;
+            box-shadow:0 3px 12px #aaa2;margin-bottom:1.2rem;color:#111;">
                 <h3 style="margin-bottom:0.2em;color:#333;">{company} <span style='font-size:0.8em;color:#555;'>({report_date})</span></h3>
-                <h2 style="margin-bottom:0.7em;color:#111;">📈 <span style="color:#8b6100;">Google Trends Score:</span> <span style="font-size:1.3em;color:#111;">{advisor_output.google_trends} / 100</span> </h2>
+                <h2 style="margin-bottom:0.7em;color:#111;">📈 <span style="color:#8b6100;">Google Trends Score:</span>
+                <span style="font-size:1.3em;color:#111;">{advisor_output.google_trends} / 100</span></h2>
                 <h3 style="color:#1971c2;">🔎 Key Insights</h3>
                 <div style="font-size:1.09em;color:#111;">{advisor_output.key_insights}</div>
                 <hr style="border:1px solid #f7ba6b;margin:0.8em 0;">
@@ -175,7 +183,7 @@ if st.button("Run Market Pulse"):
             """, unsafe_allow_html=True
         )
 
-        # === SECTION "EXPORT & AUDIO" ===
+        # === EXPORT SECTION ===
         st.markdown("---")
         st.subheader("📤 Markdown & Audio summary")
         md_report = advisor_report_to_markdown(advisor_output, company, events, report_date)
@@ -186,10 +194,9 @@ if st.button("Run Market Pulse"):
             mime="text/markdown"
         )
         with st.expander("🔊 Listen to Audio Summary", expanded=False):
-            audio_fp = generate_audio_summary(advisor_output, company, report_date, lang="en")
+            audio_fp = generate_audio_summary(advisor_output, company, report_date)
             st.audio(audio_fp, format="audio/mp3")
 
-    # --- DEBUG INFO ---
     if debug:
         with st.expander("DEBUG INFO", expanded=False):
             for k, v in debug_logs.items():
