@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel, Field
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.documents import Document
@@ -8,7 +8,8 @@ from langchain_core.runnables import RunnableLambda, RunnableSequence
 from langchain.output_parsers import PydanticOutputParser, OutputFixingParser
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
-from agents.prompts import ANALYST_PROMPT
+from agents.prompts import ANALYST_PROMPT, ADVISOR_PROMPT
+from examples import COMPANY_NEWS
 
 # Load environment variables
 load_dotenv()
@@ -31,13 +32,25 @@ class Event(BaseModel):
     mechanism_of_action: Optional[str] = Field(default=None, description="Mechanism of action of the product or treatment involved in the event")
     competitors: Optional[str] = Field(default=None, description="Competitors related to the event or product")
     summary: str = Field(default=..., description="Long summary of the event")
-    source_url: str = Field(default=..., description="URL of the article where the event was found")
+    source_url: Optional[str] = Field(default=None, description="URL of the article where the event was found")
 
 class AnalystOutput(BaseModel):
     """
     Represents the output of the analyst agent, containing a list of events.
     """
     events: List[Event]
+
+class AdvisorOutput(BaseModel):
+    """
+    Represents the output of the advisor agent, containing business insights, risks, opportunities, and recommendations.
+    """
+    google_trends: int = Field(..., description="Google Trends score (0-100)")
+    key_insights: str = Field(..., description="Key business/market insights")
+    key_takeaways: List[str] = Field(..., description="Main takeaways")
+    risks_and_opportunities: Dict[str, str] = Field(..., description="Keys: 'risks', 'opportunities'")
+    recommendations: List[str] = Field(..., description="Actionable recommendations")
+    conclusion: str = Field(..., description="High-level conclusion or summary")
+
 
 def docs_to_context(docs: List[Document]) -> str:
     """
@@ -49,6 +62,44 @@ def docs_to_context(docs: List[Document]) -> str:
         meta = doc.metadata
         context += f"Title: {meta.get('title')}\nDate: {meta.get('date','')}\nContent: {doc.page_content}\nSource: {meta.get('url')}\n\n"
     return context
+
+
+# @tool
+def fetch_news(company: str,
+               max_articles: int = 3,
+               debug_logs: Optional[dict] = None
+               ) -> List[Document]:
+    """
+    Fetches news articles related to a company and returns them as Document objects.
+    Args:
+        company (str): The name of the company to fetch news for.
+        max_articles (int): The maximum number of articles to fetch.
+        debug_logs (dict): A dictionary to store debug information.
+    Returns:
+        List[Document]: A list of Document objects containing the articles.
+    """
+    articles = COMPANY_NEWS.get(company, [])[:max_articles]
+    docs = []
+
+    # For each article, create a Document object
+    for art in articles:
+        content = art.get("content")
+        if content is None and art.get("content_file"):
+            with open(art["content_file"], "r") as f:
+                content = f.read()
+        doc = Document(
+            page_content=content or "",
+            metadata={
+                "title": art.get("title", ""),
+                "date": art.get("date", ""),
+                "url": art.get("url", "")
+            }
+        )
+        docs.append(doc)
+    
+    if debug_logs is not None:
+        debug_logs["Fetched Documents"] = str(docs)
+    return docs
 
 # @tool
 def extract_events(
@@ -77,7 +128,7 @@ def extract_events(
     # 1. input -> dictionary
     dict_step = RunnableLambda(lambda x: {"company": x["company"], "docs": x["docs"]})
     # 2. disctionary → context string
-    context_step = RunnableLambda(lambda x: {"company": x["company"], "context": docs_to_context(x["docs"])})
+    context_step = RunnableLambda(lambda x: {"company": x["company"], "context": docs_to_context(x["docs"])} )
     # 3. context string → prompt
     prompt_step = RunnableLambda(lambda x: prompt.format(company=x["company"], context=x["context"]))
     # 4. prompt → LLM output
@@ -98,4 +149,52 @@ def extract_events(
     except Exception as e:
         if debug_logs is not None:
             debug_logs["Analyst Parse Error"] = str(e)
+        return None
+
+# @tool
+def generate_business_report(company: str,
+                             events: List[Event],
+                             debug_logs: Optional[Dict] = None
+                             ) -> AdvisorOutput:
+    """
+    Generates a business advisory report based on structured events for a company.
+    Args:
+        company (str): The name of the company.
+        events (List[Event]): List of structured events related to the company.
+        debug_logs (Optional[Dict]): Dictionary to store debug information.
+    Returns:
+        AdvisorOutput: A structured output containing business insights, risks, opportunities, and recommendations.
+    """
+    events_json = [ev.dict() for ev in events]
+    prompt = ChatPromptTemplate.from_template(ADVISOR_PROMPT)
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0.3,
+        openai_api_key=OPENAI_API_KEY,
+        max_tokens=2048
+    )
+    parser = PydanticOutputParser(pydantic_object=AdvisorOutput)
+
+    # 1. input -> dictionary
+    dict_step = RunnableLambda(lambda x: {"company": x["company"], "events_json": x["events_json"]})
+    # 2. events_json → prompt
+    prompt_step = RunnableLambda(lambda x: prompt.format(company=x["company"], events_json=x["events_json"]))
+    # 3. prompt → LLM output
+    llm_step = llm
+    # 4. LLM output → LLM content
+    content_step = RunnableLambda(lambda x: x.content if hasattr(x, "content") else x)
+    # 5. LLM content → Pydantic parser
+    parser_step = parser
+    
+    # Assemble the chain
+    chain = dict_step | prompt_step | llm_step | content_step | parser_step
+
+    try:
+        result = chain.invoke({"company": company, "events_json": events_json})
+        if debug_logs is not None:
+            debug_logs["Advisor Chain Result"] = str(result)
+        return result
+    except Exception as e:
+        if debug_logs is not None:
+            debug_logs["Advisor Parse Error"] = str(e)
         return None

@@ -5,3 +5,4 @@ langchain_openai
 streamlit
 gtts
 langchain_huggingface
+langgraph
